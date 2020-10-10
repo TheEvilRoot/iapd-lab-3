@@ -119,8 +119,6 @@ struct Battery {
 
 std::string getType(UCHAR* t) {
 	std::string type(reinterpret_cast<char*>(t), 4);
-	for (int i = 0; i < type.size(); i++)
-		std::cout << std::hex << int(type[i]) << " ";
 	std::cout << "\n" << std::dec;
 	if (type == "PbAc") return "Lead Acid";
 	if (type == "LION" || type == "Li-I") return "Li-ion";
