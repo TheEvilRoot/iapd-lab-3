@@ -12,6 +12,7 @@
 std::string getBatteryState(BYTE flag) {
 	if (flag == 128) return "No battery";
 	if (flag == 0xff) return "Unknown state";
+	if (flag == 0x0) return "Normal, not charging";
 	bool isCharging = flag & 0x8;
 
 	std::string levelState;
@@ -44,7 +45,7 @@ std::string formatTime(size_t v) {
 }
 
 struct BatteryStatus {
-	size_t voltage;
+	float voltage;
 
 	bool acStatus;
 	bool saverStatus;
@@ -63,7 +64,7 @@ struct BatteryStatus {
 		std::cout << "Battery saver is " << (s.saverStatus ? "enabled" : "disabled") << "\n";
 		std::cout << "\n";
 		std::cout << "Current state: " << s.percentage << "% (" << s.currentState << ")\n";
-		std::cout << "Current voltage: " << s.voltage << "\n";
+		std::cout << "Current voltage: " << s.voltage << " V\n";
 		std::cout << "\n";
 		if (s.showTimeRemaining) {
 			std::cout << "Estimate time remaining: " << s.timeRemaining << "\n";
@@ -103,7 +104,7 @@ struct Battery {
 		}
 
 		return BatteryStatus { 
-			batteryStatus.Voltage,
+			float(batteryStatus.Voltage) / 1000,
 			status.ACLineStatus > 0, 
 			status.SystemStatusFlag > 0,
 			getBatteryState(status.BatteryFlag),
@@ -117,14 +118,17 @@ struct Battery {
 };
 
 std::string getType(UCHAR* t) {
-	std::string type(reinterpret_cast<char*>(t));
+	std::string type(reinterpret_cast<char*>(t), 4);
+	for (int i = 0; i < type.size(); i++)
+		std::cout << std::hex << int(type[i]) << " ";
+	std::cout << "\n" << std::dec;
 	if (type == "PbAc") return "Lead Acid";
 	if (type == "LION" || type == "Li-I") return "Li-ion";
 	if (type == "NiCd") return "NiCad";
-	if (type == "NiMH") return "Ni–MH";
+	if (type == "NiMH") return "Ni-MH";
 	if (type == "NiZn") return "NiZn";
 	if (type == "RAM") return "RAM (Rechargeable alkaline)";
-	return type;
+	return "INVALID";
 }
 
 std::optional<Battery> acquireBattery() {
@@ -145,24 +149,26 @@ std::optional<Battery> acquireBattery() {
 		}
 		return std::optional<Battery>();
 	}
+	DWORD bufferSize = 0;
+	SetupDiGetDeviceInterfaceDetail(deviceHandle, &interfaceData, nullptr, 0, &bufferSize, 0);
 
-	auto buffer = std::make_unique<unsigned char[]>(120);
-	SP_DEVICE_INTERFACE_DETAIL_DATA_A detailData{};
-	detailData.cbSize = sizeof(SP_DEVICE_INTERFACE_DETAIL_DATA_A);
+	auto buffer = std::make_unique<unsigned char[]>(bufferSize);
+	SP_DEVICE_INTERFACE_DETAIL_DATA* detailData = reinterpret_cast<SP_DEVICE_INTERFACE_DETAIL_DATA*>(buffer.get());
+	detailData->cbSize = sizeof(SP_DEVICE_INTERFACE_DETAIL_DATA);
 
-	if (!SetupDiGetDeviceInterfaceDetailA(deviceHandle, &interfaceData, &detailData, sizeof(SP_DEVICE_INTERFACE_DETAIL_DATA_A), 0, 0)) {
+	if (!SetupDiGetDeviceInterfaceDetail(deviceHandle, &interfaceData, detailData, bufferSize, 0, 0)) {
 		std::cerr << "SetupDiGetDeviceInterfaceDetail :: " << GetLastError() << "\n";
 		return std::optional<Battery>();
 	}
 
-	auto batteryHandle = CreateFileA(detailData.DevicePath, GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, 0, OPEN_EXISTING, 0, nullptr);
+	auto batteryHandle = CreateFileA(detailData->DevicePath, GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, 0, OPEN_EXISTING, 0, nullptr);
 	if (batteryHandle == INVALID_HANDLE_VALUE) {
-		std::cerr << "CreateFile :: " << std::string(detailData.DevicePath) << " : " << GetLastError() << "\n";
+		std::cerr << "CreateFile :: " << std::string(detailData->DevicePath) << " : " << GetLastError() << "\n";
 		return std::optional<Battery>();
 	}
 
 	BATTERY_QUERY_INFORMATION queryInfo{};
-	if (!DeviceIoControl(batteryHandle, IOCTL_BATTERY_QUERY_TAG, nullptr, 0, &queryInfo.BatteryTag, sizeof(BATTERY_QUERY_INFORMATION), nullptr, nullptr)) {
+	if (!DeviceIoControl(batteryHandle, IOCTL_BATTERY_QUERY_TAG, nullptr, 0, &queryInfo.BatteryTag, sizeof(queryInfo.BatteryTag), nullptr, nullptr)) {
 		std::cerr << "DeviceIoControl :: IOCTL_BATTERY_QUERY_TAG : " << GetLastError() << "\n";
 		return std::optional<Battery>();
 	}
@@ -191,4 +197,6 @@ int main() {
 			Sleep(1000);
 		}
 	}
+
+	getchar();
 }
