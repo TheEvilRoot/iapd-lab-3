@@ -70,7 +70,7 @@ struct BatteryStatus {
 			std::cout << "Estimate time remaining: " << s.timeRemaining << "\n";
 		}
 		if (s.showTimeFromFullCharge) {
-			std::cout << "Time from full charge: " << s.timeFromFullCharge << "\n";
+			std::cout << "Time until full charge: " << s.timeFromFullCharge << "\n";
 		}
 		return o;
 	}
@@ -118,14 +118,14 @@ struct Battery {
 };
 
 std::string getType(UCHAR* t) {
-	std::string type(reinterpret_cast<char*>(t), 4);
-	std::cout << "\n" << std::dec;
+	std::string type(reinterpret_cast<char*>(t));
 	if (type == "PbAc") return "Lead Acid";
 	if (type == "LION" || type == "Li-I") return "Li-ion";
 	if (type == "NiCd") return "NiCad";
 	if (type == "NiMH") return "Ni-MH";
 	if (type == "NiZn") return "NiZn";
 	if (type == "RAM") return "RAM (Rechargeable alkaline)";
+	if (type == "LiP") return "Li-poly";
 	return "INVALID";
 }
 
@@ -151,11 +151,11 @@ std::optional<Battery> acquireBattery() {
 	SetupDiGetDeviceInterfaceDetail(deviceHandle, &interfaceData, nullptr, 0, &bufferSize, 0);
 
 	auto buffer = std::make_unique<unsigned char[]>(bufferSize);
-	SP_DEVICE_INTERFACE_DETAIL_DATA* detailData = reinterpret_cast<SP_DEVICE_INTERFACE_DETAIL_DATA*>(buffer.get());
+	SP_DEVICE_INTERFACE_DETAIL_DATA_A* detailData = reinterpret_cast<SP_DEVICE_INTERFACE_DETAIL_DATA_A*>(buffer.get());
 	detailData->cbSize = sizeof(SP_DEVICE_INTERFACE_DETAIL_DATA);
 
-	if (!SetupDiGetDeviceInterfaceDetail(deviceHandle, &interfaceData, detailData, bufferSize, 0, 0)) {
-		std::cerr << "SetupDiGetDeviceInterfaceDetail :: " << GetLastError() << "\n";
+	if (!SetupDiGetDeviceInterfaceDetailA(deviceHandle, &interfaceData, detailData, bufferSize, 0, 0)) {
+		std::cerr << "SetupDiGetDeviceInterfaceDetail :: " << GetLastError() << "\n";	
 		return std::optional<Battery>();
 	}
 
